@@ -39,8 +39,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            Long userId = jwtUtil.parseUserId(header.substring(7));
+        // 认证方案名按 HTTP 标准(RFC 7235)不区分大小写：前端发 "Bearer xxx"、
+        // Knife4j 文档页自动填 "bearer xxx"，都要能认出，故用 equalsIgnoreCase
+        if (header != null && header.length() > 7 && header.substring(0, 7).equalsIgnoreCase("Bearer ")) {
+            Long userId = jwtUtil.parseUserId(header.substring(7).trim());
             if (userId != null) {
                 User user = userMapper.selectById(userId);
                 if (user != null && user.getStatus() == 1) {
