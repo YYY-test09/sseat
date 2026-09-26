@@ -28,8 +28,8 @@ public class OpenApiConfig {
                 .name("Authorization");
         return new OpenAPI()
                 .info(new Info()
-                        .title("校园自习室预约与管理系统 API")
-                        .description("基于 Spring Boot 3.5 + Vue 3 的前后端分离毕业设计项目接口文档")
+                        .title("简座 - 校园自习室预约与管理系统 API")
+                        .description("简座（sseat）：基于 Spring Boot 3.5 + Vue 3 的前后端分离毕业设计项目接口文档")
                         .version("1.0.0")
                         .contact(new Contact().name("wyb")))
                 .components(new Components().addSecuritySchemes("JWT", jwt))

@@ -13,7 +13,7 @@
     <artifactId>sseat</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>sseat</name>
-    <description>校园自习室预约与管理系统</description>
+    <description>简座（sseat）- 校园自习室预约与管理系统</description>
 
     <properties>
         <java.version>17</java.version>

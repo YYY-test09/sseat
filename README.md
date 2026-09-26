@@ -1,6 +1,6 @@
-# 校园自习室预约与管理系统（sseat）
+# 简座 · 校园自习室预约与管理系统（sseat）
 
-基于 Spring Boot 3.5 + Vue 3 的前后端分离毕业设计项目。
+**简座**（Simple Seat，代号 sseat）——基于 Spring Boot 3.5 + Vue 3 的前后端分离毕业设计项目。
 
 ## 技术栈
 
