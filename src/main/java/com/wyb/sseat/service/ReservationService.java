@@ -18,16 +18,16 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 预约核心业务：
- * - 时段余量：查该日该室全部有效预约，内存按整点分组计算（不写复杂 SQL）
- * - 冲突校验：座位占用 count 预检 + 数据库唯一索引兜底（防并发超卖）
+ * 预约核心业务（时段为用户自选的整点区间 startHour~endHour，如 9~12 表示 09:00-12:00）：
+ * - 时段余量：查该日该室全部有效预约，内存逐小时统计"覆盖了该小时的预约数"（不写复杂 SQL）
+ * - 冲突校验：①所选区间内每一小时都不能超过容量 ②同一座位与已有预约时间段不能重叠
+ *   ③数据库唯一索引(室,日期,起始整点,座位)兜底并发重复提交
  * - 取消：状态置 3 且 seatNo 置 null 释放座位（唯一索引允许多 NULL）
  */
 @Service
@@ -41,84 +41,92 @@ public class ReservationService {
     private final StudyRoomMapper roomMapper;
     private final UserMapper userMapper;
 
-    /** 某日各整点时段余量：[{hour, label, remaining, capacity, bookedByMe}] */
+    /** 某日各整点参考余量：[{hour, label, remaining, capacity, past, bookedByMe}] */
     public List<Map<String, Object>> slotAvailability(Long roomId, LocalDate date, Long userId) {
         StudyRoom room = mustRoom(roomId);
         if (room.getStatus() != 1) throw new BizException("该自习室已停用，暂不可预约");
         List<Reservation> used = dayReservations(roomId, date);
-        Map<Integer, Long> countByHour = used.stream()
-                .filter(r -> r.getSeatNo() != null && r.getStatus() != 3)
-                .collect(Collectors.groupingBy(Reservation::getStartHour, Collectors.counting()));
-        Map<Integer, Boolean> mineByHour = used.stream()
-                .filter(r -> r.getUserId().equals(userId) && r.getStatus() != 3)
-                .collect(Collectors.toMap(Reservation::getStartHour, r -> true, (a, b) -> a));
 
         int nowHour = LocalDateTime.now().getHour();
         List<Map<String, Object>> slots = new ArrayList<>();
         for (int h = room.getOpenStart(); h < room.getOpenEnd(); h++) {
+            final int hour = h;
             int capacity = room.getMaxCapacity();
-            int booked = countByHour.getOrDefault(h, 0L).intValue();
-            boolean past = date.isEqual(LocalDate.now()) && h <= nowHour; // 已开始的时段不可约
+            int booked = (int) used.stream().filter(r -> coversHour(r, hour)).count();
+            boolean mine = userId != null && used.stream()
+                    .anyMatch(r -> r.getUserId().equals(userId) && coversHour(r, hour));
+            boolean past = date.isEqual(LocalDate.now()) && h <= nowHour; // 已开始的整点不可约
             slots.add(Map.of(
                     "hour", h,
                     "label", String.format("%02d:00-%02d:00", h, h + 1),
                     "capacity", capacity,
                     "remaining", past ? 0 : Math.max(capacity - booked, 0),
                     "past", past,
-                    "bookedByMe", mineByHour.getOrDefault(h, false)));
+                    "bookedByMe", mine));
         }
         return slots;
     }
 
-    /** 某日某时段已被占用的座位号列表（前端渲染座位网格时置灰，自己的也算占用避免重复约） */
-    public List<Integer> occupiedSeats(Long roomId, LocalDate date, int hour) {
+    /** start~end 区间内任一小时被占用的座位号（前端座位网格置灰，自己的也算占用避免重复约） */
+    public List<Integer> occupiedSeats(Long roomId, LocalDate date, int startHour, int endHour) {
         mustRoom(roomId);
+        // 时间段重叠判定公式：已有.start < 新.end 且 已有.end > 新.start
         List<Reservation> list = reservationMapper.selectList(new LambdaQueryWrapper<Reservation>()
                 .eq(Reservation::getRoomId, roomId)
                 .eq(Reservation::getReserveDate, date)
-                .eq(Reservation::getStartHour, hour)
                 .in(Reservation::getStatus, 0, 1)
-                .isNotNull(Reservation::getSeatNo));
-        return list.stream().map(Reservation::getSeatNo).sorted().toList();
+                .isNotNull(Reservation::getSeatNo)
+                .lt(Reservation::getStartHour, endHour)
+                .gt(Reservation::getEndHour, startHour));
+        return list.stream().map(Reservation::getSeatNo).distinct().sorted().toList();
     }
 
     /** 用户提交预约 */
     public void book(Long userId, ReservationDto.BookReq req) {
         StudyRoom room = mustRoom(req.getRoomId());
         LocalDate today = LocalDate.now();
+        int start = req.getStartHour();
+        int end = req.getEndHour();
         if (req.getReserveDate().isBefore(today) || req.getReserveDate().isAfter(today.plusDays(MAX_ADVANCE_DAYS))) {
             throw new BizException("只能预约今天起 " + MAX_ADVANCE_DAYS + " 天内的日期");
         }
-        if (req.getStartHour() < room.getOpenStart() || req.getStartHour() >= room.getOpenEnd()) {
-            throw new BizException("该时段不在开放时间内");
+        if (end <= start) throw new BizException("结束时间必须晚于开始时间");
+        if (start < room.getOpenStart() || end > room.getOpenEnd()) {
+            throw new BizException(String.format("所选时段须在开放时间 %02d:00-%02d:00 内",
+                    room.getOpenStart(), room.getOpenEnd()));
         }
-        if (req.getReserveDate().isEqual(today) && req.getStartHour() <= LocalDateTime.now().getHour()) {
-            throw new BizException("该时段已开始或已结束");
+        if (req.getReserveDate().isEqual(today) && start <= LocalDateTime.now().getHour()) {
+            throw new BizException("开始时段已过，请重新选择");
         }
         if (req.getSeatNo() > room.getSeatCount()) {
             throw new BizException("座位号超出该自习室座位总数（共" + room.getSeatCount() + "座）");
         }
-        long booked = reservationMapper.selectCount(new LambdaQueryWrapper<Reservation>()
-                .eq(Reservation::getRoomId, req.getRoomId())
-                .eq(Reservation::getReserveDate, req.getReserveDate())
-                .eq(Reservation::getStartHour, req.getStartHour())
-                .in(Reservation::getStatus, 0, 1)
-                .isNotNull(Reservation::getSeatNo));
-        if (booked >= room.getMaxCapacity()) {
-            throw new BizException("该时段已约满，请选择其他时段");
+        List<Reservation> used = dayReservations(req.getRoomId(), req.getReserveDate());
+        // 容量校验：所选区间内每个整点的占用数都不能达到容量
+        for (int h = start; h < end; h++) {
+            final int hour = h;
+            long booked = used.stream().filter(r -> coversHour(r, hour)).count();
+            if (booked >= room.getMaxCapacity()) {
+                throw new BizException(String.format("%02d:00-%02d:00 时段已约满，请调整起止时间", hour, hour + 1));
+            }
         }
+        // 座位冲突校验：该座位已有预约与所选区间重叠则拒绝
+        boolean seatConflict = used.stream().anyMatch(r -> r.getSeatNo() != null
+                && r.getSeatNo().equals(req.getSeatNo()) && overlaps(r, start, end));
+        if (seatConflict) throw new BizException("该座位在所选时段内已被预约，请换一个座位或调整时段");
 
         Reservation r = new Reservation();
         r.setUserId(userId);
         r.setRoomId(req.getRoomId());
         r.setReserveDate(req.getReserveDate());
-        r.setStartHour(req.getStartHour());
+        r.setStartHour(start);
+        r.setEndHour(end);
         r.setSeatNo(req.getSeatNo());
         r.setStatus(0); // 待确认
         try {
             reservationMapper.insert(r);
         } catch (DuplicateKeyException e) {
-            // 并发下 count 预检可能都通过，唯一索引是最后防线
+            // 并发下同座位同时段都通过了预检时，唯一索引是最后防线
             throw new BizException("该座位刚刚已被预约，请换一个座位");
         }
     }
@@ -171,16 +179,28 @@ public class ReservationService {
         return toVOPage(reservationMapper.selectPage(new Page<>(pageNo, size), q));
     }
 
-    /** 管理端新增/修改预约 */
+    /** 管理端新增/修改预约（处理特殊需求或异常数据修正） */
     public void adminSave(ReservationDto.AdminSaveReq req) {
         StudyRoom room = mustRoom(req.getRoomId());
+        if (req.getEndHour() <= req.getStartHour()) throw new BizException("结束时间必须晚于开始时间");
         if (req.getSeatNo() > room.getSeatCount()) throw new BizException("座位号超出座位总数");
+        // 同一座位时间段重叠检查（编辑时排除自己这条记录）
+        boolean conflict = reservationMapper.exists(new LambdaQueryWrapper<Reservation>()
+                .eq(Reservation::getRoomId, req.getRoomId())
+                .eq(Reservation::getReserveDate, req.getReserveDate())
+                .eq(Reservation::getSeatNo, req.getSeatNo())
+                .in(Reservation::getStatus, 0, 1)
+                .ne(req.getId() != null, Reservation::getId, req.getId())
+                .lt(Reservation::getStartHour, req.getEndHour())
+                .gt(Reservation::getEndHour, req.getStartHour()));
+        if (conflict) throw new BizException("该座位在所选时段内已有预约，请调整时段或座位");
         Reservation r = new Reservation();
         r.setId(req.getId());
         r.setUserId(req.getUserId());
         r.setRoomId(req.getRoomId());
         r.setReserveDate(req.getReserveDate());
         r.setStartHour(req.getStartHour());
+        r.setEndHour(req.getEndHour());
         r.setSeatNo(req.getSeatNo());
         r.setStatus(req.getStatus());
         try {
@@ -211,14 +231,14 @@ public class ReservationService {
         reservationMapper.deleteById(id);
     }
 
-    /** 定时任务调用：把已结束的待确认/已确认预约置为已完成 */
+    /** 定时任务调用：把已整体结束（当前时间过了结束整点）的待确认/已确认预约置为已完成 */
     public int completeExpired() {
         LocalDateTime now = LocalDateTime.now();
         List<Reservation> actives = reservationMapper.selectList(new LambdaQueryWrapper<Reservation>()
                 .in(Reservation::getStatus, 0, 1));
         int count = 0;
         for (Reservation r : actives) {
-            if (isStartedAt(r, now)) {
+            if (hasEndedAt(r, now)) {
                 Reservation update = new Reservation();
                 update.setId(r.getId());
                 update.setStatus(2);
@@ -231,14 +251,33 @@ public class ReservationService {
 
     // ---------- 私有 ----------
 
+    /** 预约是否已"开始"（按起始整点判断，用于取消限制） */
     private boolean isStarted(Reservation r) {
-        return isStartedAt(r, LocalDateTime.now());
-    }
-
-    private boolean isStartedAt(Reservation r, LocalDateTime now) {
         LocalDate d = r.getReserveDate();
+        LocalDateTime now = LocalDateTime.now();
         return d.isBefore(now.toLocalDate())
                 || (d.isEqual(now.toLocalDate()) && r.getStartHour() <= now.getHour());
+    }
+
+    /** 预约是否已"整体结束"（按结束整点判断，用于定时任务置已完成） */
+    private boolean hasEndedAt(Reservation r, LocalDateTime now) {
+        LocalDate d = r.getReserveDate();
+        int end = r.getEndHour() == null ? r.getStartHour() + 1 : r.getEndHour();
+        return d.isBefore(now.toLocalDate())
+                || (d.isEqual(now.toLocalDate()) && end <= now.getHour());
+    }
+
+    /** 该预约占用的时间段是否覆盖某个整点 h（即 start <= h < end） */
+    private boolean coversHour(Reservation r, int hour) {
+        if (r.getSeatNo() == null) return false; // 已取消释放座位的不算占用
+        int end = r.getEndHour() == null ? r.getStartHour() + 1 : r.getEndHour();
+        return r.getStartHour() <= hour && hour < end;
+    }
+
+    /** 该预约与新区间 [start, end) 是否时间重叠 */
+    private boolean overlaps(Reservation r, int start, int end) {
+        int rEnd = r.getEndHour() == null ? r.getStartHour() + 1 : r.getEndHour();
+        return r.getStartHour() < end && rEnd > start;
     }
 
     private List<Reservation> dayReservations(Long roomId, LocalDate date) {
@@ -273,6 +312,7 @@ public class ReservationService {
             v.setRoomId(r.getRoomId());
             v.setReserveDate(r.getReserveDate());
             v.setStartHour(r.getStartHour());
+            v.setEndHour(r.getEndHour());
             v.setSeatNo(r.getSeatNo());
             v.setStatus(r.getStatus());
             v.setCreateTime(r.getCreateTime());

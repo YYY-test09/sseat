@@ -30,12 +30,13 @@ public class ReservationController {
         return Result.ok(reservationService.slotAvailability(roomId, date, CurrentUser.id()));
     }
 
-    /** 选定时段后查已占用座位号 */
+    /** 选开始/结束时间后查该区间内任一小时被占用的座位号（前端座位网格置灰） */
     @GetMapping("/seats")
     public Result<List<Integer>> seats(@RequestParam Long roomId,
                                        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-                                       @RequestParam Integer hour) {
-        return Result.ok(reservationService.occupiedSeats(roomId, date, hour));
+                                       @RequestParam Integer startHour,
+                                       @RequestParam Integer endHour) {
+        return Result.ok(reservationService.occupiedSeats(roomId, date, startHour, endHour));
     }
 
     @PostMapping

@@ -25,7 +25,7 @@ class ReservationTaskTest {
         Reservation r = new Reservation();
         r.setUserId(1L); r.setRoomId(1L);
         r.setReserveDate(LocalDate.now().minusDays(1)); // 昨天,一定已过期
-        r.setStartHour(10); r.setSeatNo(500); r.setStatus(0);
+        r.setStartHour(10); r.setEndHour(12); r.setSeatNo(500); r.setStatus(0);
         reservationMapper.insert(r);
 
         int n = reservationService.completeExpired();
@@ -36,7 +36,7 @@ class ReservationTaskTest {
         Reservation future = new Reservation();
         future.setUserId(1L); future.setRoomId(1L);
         future.setReserveDate(LocalDate.now().plusDays(1));
-        future.setStartHour(9); future.setSeatNo(501); future.setStatus(0);
+        future.setStartHour(9); future.setEndHour(11); future.setSeatNo(501); future.setStatus(0);
         reservationMapper.insert(future);
         reservationService.completeExpired();
         assertEquals(0, reservationMapper.selectById(future.getId()).getStatus(), "未来预约不应被改动");

@@ -17,13 +17,15 @@ public class ReservationVO {
     private String roomType;
     private LocalDate reserveDate;
     private Integer startHour;
+    private Integer endHour;
     private Integer seatNo;
     private Integer status; // 0待确认 1已确认 2已完成 3已取消
     private LocalDateTime createTime;
 
-    /** 供前端展示的时段文字，如 08:00-09:00 */
+    /** 供前端展示的时段文字，如 09:00-12:00（旧数据无 endHour 时按 1 小时兼容） */
     public String getTimeSlot() {
         if (startHour == null) return "";
-        return String.format("%02d:00-%02d:00", startHour, startHour + 1);
+        int end = endHour == null ? startHour + 1 : endHour;
+        return String.format("%02d:00-%02d:00", startHour, end);
     }
 }

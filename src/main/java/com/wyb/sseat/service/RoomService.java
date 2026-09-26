@@ -14,8 +14,6 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /** 自习室业务：管理端增删改查 + 前台浏览（含剩余名额计算） */
 @Service
@@ -71,7 +69,7 @@ public class RoomService {
         }
     }
 
-    /** 删除前检查：存在未开始的有效预约时不允许删除，避免预约数据悬空 */
+    /** 删除前检查：存在未结束的有效预约时不允许删除，避免预约数据悬空 */
     public void delete(Long id) {
         LocalDateTime now = LocalDateTime.now();
         boolean hasFuture = reservationMapper.exists(new LambdaQueryWrapper<Reservation>()
@@ -79,31 +77,33 @@ public class RoomService {
                 .in(Reservation::getStatus, 0, 1)
                 .and(w -> w.gt(Reservation::getReserveDate, LocalDate.now())
                         .or(q -> q.eq(Reservation::getReserveDate, LocalDate.now())
-                                .gt(Reservation::getStartHour, now.getHour()))));
+                                .gt(Reservation::getEndHour, now.getHour()))));
         if (hasFuture) throw new BizException("该自习室存在未完成的预约，请先处理后再删除");
         roomMapper.deleteById(id);
     }
 
     /**
      * 计算"今日剩余名额"：取今日所有未开始的整点时段中，剩余容量的最小值。
-     * （展示在卡片上的保守值；真实逐时段余量在预约步骤按日期查询）
+     * （展示在卡片上的保守值；区间占用 = 该预约的 start~end 覆盖了此小时）
      */
     private void fillRemaining(StudyRoom room) {
         LocalDate today = LocalDate.now();
         int nowHour = LocalDateTime.now().getHour();
-        // 今日该室各时段已约人数（排除已取消 seatNo=null 的记录）
+        // 今日该室仍有效的预约（status 0/1；取消时已置 seatNo=null 不会进来）
         List<Reservation> todays = reservationMapper.selectList(new LambdaQueryWrapper<Reservation>()
                 .eq(Reservation::getRoomId, room.getId())
                 .eq(Reservation::getReserveDate, today)
                 .in(Reservation::getStatus, 0, 1)
                 .isNotNull(Reservation::getSeatNo));
-        Map<Integer, Long> countByHour = todays.stream()
-                .collect(Collectors.groupingBy(Reservation::getStartHour, Collectors.counting()));
         int minRemaining = Integer.MAX_VALUE;
         for (int h = room.getOpenStart(); h < room.getOpenEnd(); h++) {
-            if (h < nowHour + 1) continue; // 已开始/结束的时段不计
-            int used = countByHour.getOrDefault(h, 0L).intValue();
-            minRemaining = Math.min(minRemaining, room.getMaxCapacity() - used);
+            if (h < nowHour + 1) continue; // 已开始的时段不计
+            final int hour = h;
+            long used = todays.stream()
+                    .filter(r -> r.getStartHour() <= hour
+                            && hour < (r.getEndHour() == null ? r.getStartHour() + 1 : r.getEndHour()))
+                    .count();
+            minRemaining = Math.min(minRemaining, room.getMaxCapacity() - (int) used);
         }
         room.setRemaining(minRemaining == Integer.MAX_VALUE ? 0 : Math.max(minRemaining, 0));
     }

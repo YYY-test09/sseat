@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 
 /**
  * 预约记录实体。
- * 时段 = startHour ~ startHour+1 的整点段（如 8 表示 08:00-09:00）。
+ * 时段 = startHour ~ endHour 的整点区间（用户自选，如 9~12 表示 09:00-12:00）。
  * 取消预约时 seatNo 置 null 以释放座位（唯一索引允许多个 NULL）。
  */
 @Data
@@ -24,6 +24,7 @@ public class Reservation {
     private Long roomId;
     private LocalDate reserveDate;
     private Integer startHour;
+    private Integer endHour;
     private Integer seatNo;
     private Integer status; // 0待确认 1已确认 2已完成 3已取消
     @TableField(fill = FieldFill.INSERT)

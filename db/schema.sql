@@ -74,17 +74,19 @@ CREATE TABLE study_room (
 
 -- ------------------------------------------------------------
 -- 4. 预约表
---    时段 = start_hour ~ start_hour+1 的整点段
+--    时段 = start_hour ~ end_hour 的整点区间（用户自选，如 9~12 表示 09:00-12:00）
 --    seat_no：座位号 1..seat_count；取消预约时置 NULL 释放座位
 --      （利用 MySQL 唯一索引允许多个 NULL 的特性）
---    唯一索引：同一自习室同一天同一时段同一座位只能有一条有效预约
+--    区间重叠校验在 ReservationService 内完成（start<已有end 且 end>已有start 即冲突）；
+--    唯一索引作为"同一起始时段同座位"的最后防线，兜底并发重复提交
 -- ------------------------------------------------------------
 CREATE TABLE reservation (
   id           BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id      BIGINT  NOT NULL COMMENT '预约人',
   room_id      BIGINT  NOT NULL COMMENT '自习室',
   reserve_date DATE    NOT NULL COMMENT '预约日期',
-  start_hour   INT     NOT NULL COMMENT '起始整点(8-20)',
+  start_hour   INT     NOT NULL COMMENT '起始整点(如9=09:00)',
+  end_hour     INT     NOT NULL COMMENT '结束整点,不含(如12=到12:00止)',
   seat_no      INT     DEFAULT NULL COMMENT '座位号,取消后置NULL',
   status       TINYINT NOT NULL DEFAULT 0 COMMENT '0待确认 1已确认 2已完成 3已取消',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

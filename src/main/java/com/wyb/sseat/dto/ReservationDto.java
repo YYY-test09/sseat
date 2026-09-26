@@ -10,16 +10,19 @@ import java.time.LocalDate;
 /** 预约相关请求参数 */
 public class ReservationDto {
 
-    /** 用户提交预约 */
+    /** 用户提交预约（自选开始~结束整点时段） */
     @Data
     public static class BookReq {
         @NotNull(message = "请选择自习室")
         private Long roomId;
         @NotNull(message = "请选择日期")
         private LocalDate reserveDate;
-        @NotNull(message = "请选择时段")
+        @NotNull(message = "请选择开始时间")
         @Min(value = 0, message = "时段不合法") @Max(value = 23, message = "时段不合法")
         private Integer startHour;
+        @NotNull(message = "请选择结束时间")
+        @Min(value = 1, message = "时段不合法") @Max(value = 24, message = "时段不合法")
+        private Integer endHour;
         @NotNull(message = "请选择座位")
         @Min(value = 1, message = "座位号不合法")
         private Integer seatNo;
@@ -35,8 +38,10 @@ public class ReservationDto {
         private Long roomId;
         @NotNull(message = "请选择日期")
         private LocalDate reserveDate;
-        @NotNull(message = "请选择时段")
+        @NotNull(message = "请选择开始时间")
         private Integer startHour;
+        @NotNull(message = "请选择结束时间")
+        private Integer endHour;
         @NotNull(message = "请选择座位")
         private Integer seatNo;
         @NotNull(message = "请选择状态")
