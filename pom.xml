@@ -78,6 +78,26 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Knife4j：中文在线接口文档（访问 /doc.html）。
+             自带的 springdoc 版本较老，与 Spring Boot 3.5 不兼容，
+             因此排除后手动钉一个适配 3.5 的 2.8.x 版本 -->
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
+            <version>4.5.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springdoc</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.8.13</version>
+        </dependency>
+
         <!-- Lombok：用 @Data 注解自动生成 getter/setter，少写样板代码 -->
         <dependency>
             <groupId>org.projectlombok</groupId>

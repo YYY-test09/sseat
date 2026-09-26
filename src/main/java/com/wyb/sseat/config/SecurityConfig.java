@@ -48,6 +48,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/captcha", "/api/auth/login", "/api/auth/register",
                                  "/api/auth/sms/send", "/api/auth/sms-register", "/api/auth/sms-login",
                                  "/api/auth/forgot", "/uploads/**", "/error").permitAll()
+                // 接口文档相关路径放行（Knife4j 的 doc.html 页面与 springdoc 的 JSON 描述）
+                .requestMatchers("/doc.html", "/webjars/**", "/v3/api-docs", "/v3/api-docs/**",
+                                 "/swagger-ui/**", "/swagger-ui.html", "/favicon.ico").permitAll()
                 // 需求：未登录用户可浏览自习室与资讯、论坛（交互类接口仍需登录）
                 .requestMatchers(HttpMethod.GET, "/api/rooms/**", "/api/news/**", "/api/posts/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("admin")

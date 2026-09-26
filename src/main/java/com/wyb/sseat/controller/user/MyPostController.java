@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller.user;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.CurrentUser;
 import com.wyb.sseat.common.Result;
@@ -10,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 /** 用户端论坛：发帖、我的帖子（含审核状态）、编辑重审、删除 */
+@Tag(name="06-用户端-我的帖子")
 @RestController
 @RequestMapping("/api/user/posts")
 @RequiredArgsConstructor

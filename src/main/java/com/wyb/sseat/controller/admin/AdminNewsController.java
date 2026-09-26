@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller.admin;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.Result;
 import com.wyb.sseat.entity.News;
@@ -8,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 /** 管理端资讯接口：/api/admin/news/**（Security 保证仅管理员） */
+@Tag(name="07-管理端-资讯")
 @RestController
 @RequestMapping("/api/admin/news")
 @RequiredArgsConstructor

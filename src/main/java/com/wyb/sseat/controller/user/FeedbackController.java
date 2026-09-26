@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller.user;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.BizException;
@@ -15,6 +16,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 /** 用户端意见反馈：提交 + 查看自己的反馈与管理员回复 */
+@Tag(name="06-用户端-意见反馈")
 @RestController
 @RequestMapping("/api/user/feedbacks")
 @RequiredArgsConstructor

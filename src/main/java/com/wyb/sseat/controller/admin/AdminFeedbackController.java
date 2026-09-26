@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller.admin;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.BizException;
@@ -20,6 +21,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /** 管理端反馈管理：列表 + 回复 + 删除 */
+@Tag(name="07-管理端-反馈")
 @RestController
 @RequestMapping("/api/admin/feedbacks")
 @RequiredArgsConstructor

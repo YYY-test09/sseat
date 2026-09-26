@@ -41,8 +41,8 @@ mybatis-plus:
 # ---------- 自定义配置（对应代码里的 @Value） ----------
 sseat:
   jwt:
-    # JWT 签名密钥（HS256 要求至少32字符，可随意改）
-    secret: "sseat-jwt-secret-key-2026-graduation-project-001"
+    # JWT 签名密钥（HS256 要求至少32字符）——已换为随机长串，换密钥后旧令牌全部失效属正常现象
+    secret: "OLD_JWT_SECRET_SCRUBBED"
     # 令牌有效期（小时）
     expire-hours: 24
   upload:

@@ -29,6 +29,7 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final CaptchaService captchaService;
     private final SmsService smsService;
+    private final LoginSecurityService loginSecurity;
 
     /** 登录返回体：{ token, user } */
     private Map<String, Object> issueToken(User user) {
@@ -45,14 +46,17 @@ public class AuthService {
         return result;
     }
 
-    /** 账号密码登录：先验图形验证码，再比对密码 */
+    /** 账号密码登录：锁定检查 → 图形验证码 → 密码比对（连续失败触发锁定，见 LoginSecurityService） */
     public Map<String, Object> login(AuthDto.LoginReq req) {
+        loginSecurity.checkLock(req.getUsername());
         captchaService.verify(req.getCaptchaKey(), req.getCaptchaCode());
         User user = userMapper.selectOne(
                 new LambdaQueryWrapper<User>().eq(User::getUsername, req.getUsername()));
         if (user == null || !Sha256Util.matches(req.getPassword(), user.getPassword())) {
-            throw new BizException("账号或密码错误");
+            String hint = loginSecurity.recordFailure(req.getUsername());
+            throw new BizException("账号或密码错误" + hint);
         }
+        loginSecurity.reset(req.getUsername());
         return issueToken(user);
     }
 

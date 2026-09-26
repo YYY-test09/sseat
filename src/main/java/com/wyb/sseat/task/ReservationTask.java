@@ -7,8 +7,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * 定时任务：把已结束的"待确认/已确认"预约自动置为"已完成"。
- * 需求描述里的"系统根据实际预约情况自动更新状态"即指此逻辑。
+ * 定时任务：预约状态自动巡检（需求描述里的"系统根据实际预约情况自动更新状态"）。
+ * 规则一：时段开始 15 分钟后仍未签到 → 违约取消、释放座位；
+ * 规则二：已签到且整个时段结束 → 置为已完成。
  */
 @Slf4j
 @Component
@@ -18,12 +19,12 @@ public class ReservationTask {
     private final ReservationService reservationService;
 
     /**
-     * 每小时第 1 分钟执行一次（cron：秒 分 时 日 月 周）。
-     * 例：08:00-09:00 的时段在 09 点过就应结束，9 点这一轮任务会把 8 点的记录置为已完成。
+     * 每 5 分钟执行一次（cron 六段：秒 分 时 日 月 周；分的 "0/5" 表示每5分钟）。
+     * 频率比"签到窗口15分钟"快即可保证违约及时释放，也不给数据库压力。
      */
-    @Scheduled(cron = "0 1 * * * ?")
-    public void completeExpired() {
+    @Scheduled(cron = "0 */5 * * * ?")
+    public void refreshReservationStatus() {
         int n = reservationService.completeExpired();
-        if (n > 0) log.info("定时任务：{} 条过期预约已置为已完成", n);
+        if (n > 0) log.info("定时任务：{} 条预约状态已自动更新（违约取消/置已完成）", n);
     }
 }

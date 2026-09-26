@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller.admin;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.wyb.sseat.common.Result;
 import com.wyb.sseat.dto.RoleDto;
 import com.wyb.sseat.entity.Role;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /** 管理端：角色管理接口 */
+@Tag(name="07-管理端-角色")
 @RestController
 @RequestMapping("/api/admin/roles")
 @RequiredArgsConstructor

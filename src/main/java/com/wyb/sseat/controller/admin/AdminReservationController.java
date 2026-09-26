@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller.admin;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.Result;
 import com.wyb.sseat.dto.ReservationDto;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 
 /** 管理端预约管理接口：查看所有用户预约、筛选、新增/修改/删除处理异常数据 */
+@Tag(name="07-管理端-预约")
 @RestController
 @RequestMapping("/api/admin/reservations")
 @RequiredArgsConstructor

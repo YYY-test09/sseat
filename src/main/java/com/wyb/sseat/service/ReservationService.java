@@ -1,6 +1,7 @@
 package com.wyb.sseat.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.BizException;
 import com.wyb.sseat.dto.ReservationDto;
@@ -36,6 +37,8 @@ public class ReservationService {
 
     /** 最多可提前预约天数 */
     private static final int MAX_ADVANCE_DAYS = 7;
+    /** 时段开始后允许签到的分钟数，超时视为违约（座位自动释放） */
+    public static final int CHECK_IN_GRACE_MINUTES = 15;
 
     private final ReservationMapper reservationMapper;
     private final StudyRoomMapper roomMapper;
@@ -138,10 +141,28 @@ public class ReservationService {
         if (r.getStatus() == 2) throw new BizException("已完成的预约不能取消");
         if (r.getStatus() == 3) throw new BizException("该预约已取消过了");
         if (isStarted(r)) throw new BizException("时段已开始，无法取消");
+        // 注意：MP 的 updateById 默认忽略 null 字段，置空 seatNo 必须用 UpdateWrapper 显式 set
+        reservationMapper.update(null, new LambdaUpdateWrapper<Reservation>()
+                .eq(Reservation::getId, id)
+                .set(Reservation::getStatus, 3)
+                .set(Reservation::getSeatNo, null));
+    }
+
+    /** 用户签到：时段开始后 15 分钟内有效；签到后即使过期也只置"已完成"不置违约 */
+    public void checkIn(Long userId, Long id) {
+        Reservation r = reservationMapper.selectById(id);
+        if (r == null || !r.getUserId().equals(userId)) throw new BizException("预约记录不存在");
+        if (r.getStatus() != 0 && r.getStatus() != 1) throw new BizException("该预约当前状态无法签到");
+        if (r.getCheckInTime() != null) throw new BizException("已签到，无需重复操作");
+        LocalDateTime start = r.getReserveDate().atTime(r.getStartHour(), 0);
+        LocalDateTime now = LocalDateTime.now();
+        if (now.isBefore(start)) throw new BizException("还没到预约开始时间，无法签到");
+        if (now.isAfter(start.plusMinutes(CHECK_IN_GRACE_MINUTES))) {
+            throw new BizException("已超过开始后 " + CHECK_IN_GRACE_MINUTES + " 分钟，签到通道已关闭");
+        }
         Reservation update = new Reservation();
         update.setId(id);
-        update.setStatus(3);
-        update.setSeatNo(null); // 关键：置 NULL 释放座位
+        update.setCheckInTime(now);
         reservationMapper.updateById(update);
     }
 
@@ -220,25 +241,47 @@ public class ReservationService {
     public void adminUpdateStatus(Long id, Integer status) {
         Reservation exist = reservationMapper.selectById(id);
         if (exist == null) throw new BizException("预约记录不存在");
-        Reservation update = new Reservation();
-        update.setId(id);
-        update.setStatus(status);
-        if (status == 3) update.setSeatNo(null); // 管理员取消同样释放座位
-        reservationMapper.updateById(update);
+        if (status == 3) {
+            // 管理员取消同样释放座位：null 字段必须用 UpdateWrapper 显式 set（见 cancel 注释）
+            reservationMapper.update(null, new LambdaUpdateWrapper<Reservation>()
+                    .eq(Reservation::getId, id)
+                    .set(Reservation::getStatus, 3)
+                    .set(Reservation::getSeatNo, null));
+        } else {
+            Reservation update = new Reservation();
+            update.setId(id);
+            update.setStatus(status);
+            reservationMapper.updateById(update);
+        }
     }
 
     public void adminDelete(Long id) {
         reservationMapper.deleteById(id);
     }
 
-    /** 定时任务调用：把已整体结束（当前时间过了结束整点）的待确认/已确认预约置为已完成 */
+    /**
+     * 定时任务调用，巡检所有待确认/已确认预约，做两条状态流转：
+     * ① 违约释放：时段开始超过 15 分钟仍未签到 → 置"已取消"并释放座位；
+     * ② 正常完结：已签到且时段整体结束 → 置"已完成"。
+     */
     public int completeExpired() {
         LocalDateTime now = LocalDateTime.now();
         List<Reservation> actives = reservationMapper.selectList(new LambdaQueryWrapper<Reservation>()
                 .in(Reservation::getStatus, 0, 1));
         int count = 0;
         for (Reservation r : actives) {
-            if (hasEndedAt(r, now)) {
+            LocalDateTime start = r.getReserveDate().atTime(r.getStartHour(), 0);
+            if (r.getCheckInTime() == null) {
+                // 未签到且已过签到窗口 → 违约取消、释放座位
+                if (now.isAfter(start.plusMinutes(CHECK_IN_GRACE_MINUTES))) {
+                    reservationMapper.update(null, new LambdaUpdateWrapper<Reservation>()
+                            .eq(Reservation::getId, r.getId())
+                            .set(Reservation::getStatus, 3)
+                            .set(Reservation::getSeatNo, null));
+                    count++;
+                }
+            } else if (hasEndedAt(r, now)) {
+                // 已签到且时段结束 → 已完成
                 Reservation update = new Reservation();
                 update.setId(r.getId());
                 update.setStatus(2);
@@ -315,6 +358,7 @@ public class ReservationService {
             v.setEndHour(r.getEndHour());
             v.setSeatNo(r.getSeatNo());
             v.setStatus(r.getStatus());
+            v.setCheckInTime(r.getCheckInTime());
             v.setCreateTime(r.getCreateTime());
             StudyRoom room = roomMap.get(r.getRoomId());
             if (room != null) { v.setRoomName(room.getName()); v.setRoomType(room.getType()); }

@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller.user;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.CurrentUser;
 import com.wyb.sseat.common.Result;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /** 用户端预约接口（需登录） */
+@Tag(name="06-用户端-预约与签到")
 @RestController
 @RequestMapping("/api/user/reservations")
 @RequiredArgsConstructor
@@ -55,6 +57,13 @@ public class ReservationController {
     @PutMapping("/{id}/cancel")
     public Result<Void> cancel(@PathVariable Long id) {
         reservationService.cancel(CurrentUser.id(), id);
+        return Result.ok();
+    }
+
+    /** 签到：预约开始后 15 分钟内有效（超时未签到将被定时任务违约取消并释放座位） */
+    @PutMapping("/{id}/checkin")
+    public Result<Void> checkIn(@PathVariable Long id) {
+        reservationService.checkIn(CurrentUser.id(), id);
         return Result.ok();
     }
 }

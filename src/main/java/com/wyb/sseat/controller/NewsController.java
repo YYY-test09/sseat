@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.Result;
 import com.wyb.sseat.entity.News;
@@ -8,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 /** 前台资讯接口（GET 免登录，Security 已放行 /api/news/**） */
+@Tag(name="04-资讯浏览(免登录)")
 @RestController
 @RequestMapping("/api/news")
 @RequiredArgsConstructor

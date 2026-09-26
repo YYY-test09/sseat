@@ -27,6 +27,7 @@ public class Reservation {
     private Integer endHour;
     private Integer seatNo;
     private Integer status; // 0待确认 1已确认 2已完成 3已取消
+    private LocalDateTime checkInTime; // 签到时间：开始后15分钟内未签到会被定时任务置为已取消并释放座位
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
     @TableField(fill = FieldFill.INSERT_UPDATE)

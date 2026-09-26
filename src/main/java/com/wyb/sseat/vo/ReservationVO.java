@@ -20,6 +20,7 @@ public class ReservationVO {
     private Integer endHour;
     private Integer seatNo;
     private Integer status; // 0待确认 1已确认 2已完成 3已取消
+    private LocalDateTime checkInTime; // null=未签到
     private LocalDateTime createTime;
 
     /** 供前端展示的时段文字，如 09:00-12:00（旧数据无 endHour 时按 1 小时兼容） */

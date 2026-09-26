@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.wyb.sseat.common.CurrentUser;
 import com.wyb.sseat.common.Result;
 import com.wyb.sseat.dto.AuthDto;
@@ -18,6 +19,7 @@ import java.util.Map;
  * 认证接口（免登录白名单，路径必须放在 /api/auth/ 下）：
  * 图形验证码、注册、登录、短信、找回密码。
  */
+@Tag(name="01-认证(登录/注册/验证码)")
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor

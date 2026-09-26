@@ -89,6 +89,7 @@ CREATE TABLE reservation (
   end_hour     INT     NOT NULL COMMENT '结束整点,不含(如12=到12:00止)',
   seat_no      INT     DEFAULT NULL COMMENT '座位号,取消后置NULL',
   status       TINYINT NOT NULL DEFAULT 0 COMMENT '0待确认 1已确认 2已完成 3已取消',
+  check_in_time DATETIME DEFAULT NULL COMMENT '用户签到时间(开始后15分钟内,超时未签到定时置已取消)',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_seat (room_id, reserve_date, start_hour, seat_no),
@@ -195,7 +196,7 @@ CREATE TABLE like_record (
 -- ============================================================
 
 INSERT INTO `role` (role_name, role_code, menus, status, remark) VALUES
-('超级管理员', 'admin', 'room,reservation,post,feedback,news,role,user', 1, '系统内置角色，不可删除'),
+('超级管理员', 'admin', 'dashboard,room,reservation,post,feedback,news,role,user', 1, '系统内置角色，不可删除'),
 ('普通用户',   'user',  '', 1, '前台用户角色');
 
 INSERT INTO `user` (username, password, nickname, phone, email, role_code, gender) VALUES

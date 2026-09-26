@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.CurrentUser;
 import com.wyb.sseat.common.Result;
@@ -18,6 +19,7 @@ import java.util.Map;
  * 论坛前台接口：帖子浏览（GET 免登录）、评论、帖子点赞收藏（需登录）。
  * 帖子详情/列表对未登录开放，符合"未登录可浏览、交互需登录"。
  */
+@Tag(name="05-论坛浏览与互动")
 @RestController
 @RequestMapping("/api/posts")
 @RequiredArgsConstructor

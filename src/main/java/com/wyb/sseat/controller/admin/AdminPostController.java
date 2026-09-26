@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller.admin;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.Result;
 import com.wyb.sseat.entity.Post;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 /** 管理端论坛：审核（通过/驳回带原因）、编辑、删除、按状态筛选 */
+@Tag(name="07-管理端-论坛审核")
 @RestController
 @RequestMapping("/api/admin/posts")
 @RequiredArgsConstructor

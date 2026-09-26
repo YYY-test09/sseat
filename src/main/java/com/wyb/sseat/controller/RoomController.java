@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.CurrentUser;
 import com.wyb.sseat.common.Result;
@@ -16,6 +17,7 @@ import java.util.Map;
  * 前台自习室接口：浏览对未登录用户开放（Security 已放行 GET），
  * 点赞/收藏需要登录（POST 未放行）。
  */
+@Tag(name="03-自习室浏览(免登录)")
 @RestController
 @RequestMapping("/api/rooms")
 @RequiredArgsConstructor

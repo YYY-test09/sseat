@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller.admin;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.CurrentUser;
 import com.wyb.sseat.common.Result;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 /**
  * 管理端：用户信息管理接口（路径以 /api/admin 开头，Security 已强制 ROLE_admin）。
  */
+@Tag(name="07-管理端-用户")
 @RestController
 @RequestMapping("/api/admin/users")
 @RequiredArgsConstructor

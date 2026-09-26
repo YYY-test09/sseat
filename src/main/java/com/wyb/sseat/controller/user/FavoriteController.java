@@ -1,5 +1,6 @@
 package com.wyb.sseat.controller.admin;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.CurrentUser;
 import com.wyb.sseat.common.Result;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /** 前台-我的收藏管理（个人中心统一查看/取消） */
+@Tag(name="06-用户端-我的收藏")
 @RestController
 @RequestMapping("/api/user/favorites")
 @RequiredArgsConstructor
