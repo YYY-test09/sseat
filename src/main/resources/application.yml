@@ -1,0 +1,61 @@
+# ============================================
+# 应用配置文件（YAML 格式：缩进表示层级）
+# ============================================
+server:
+  port: 8080
+
+spring:
+  application:
+    name: sseat
+  # ---------- 数据库连接 ----------
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # sseat_db 是库名；?后面是参数：编码utf8mb4、时区东八区、允许批量重写
+    # 注意：characterEncoding 填的是 Java 侧字符集名 utf8（MySQL 驱动会自动对应到 utf8mb4），
+    # 填 utf8mb4 会报 Unsupported character encoding
+    url: jdbc:mysql://localhost:3306/sseat_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowMultiQueries=true
+    username: root
+    password: ${MYSQL_PASSWORD:}
+  # ---------- 文件上传大小限制 ----------
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 20MB
+  # 日期时间序列化成字符串而不是时间戳
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+
+# ---------- MyBatis-Plus ----------
+mybatis-plus:
+  configuration:
+    # 数据库下划线字段(user_name) 自动映射 Java 驼峰属性(userName)
+    map-underscore-to-camel-case: true
+    # 控制台打印执行的 SQL，方便学习和调试
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto          # 主键自增
+      logic-delete-field: deleted   # 预留：逻辑删除字段（暂不启用）
+
+# ---------- 自定义配置（对应代码里的 @Value） ----------
+sseat:
+  jwt:
+    # JWT 签名密钥（HS256 要求至少32字符，可随意改）
+    secret: "sseat-jwt-secret-key-2026-graduation-project-001"
+    # 令牌有效期（小时）
+    expire-hours: 24
+  upload:
+    # 图片上传的本地保存目录（会自动创建）
+    dir: "D:/tmp/sseat-uploads/"
+    # 前端访问图片的 URL 前缀
+    url-prefix: "/uploads/"
+  captcha:
+    # 开发模式：验证码接口额外返回明文答案，方便自动化测试与自测；
+    # 答辩/交付前改为 false（前端演示时人工看图输入，不影响功能）
+    debug-reveal: true
+  sms:
+    # 短信模拟开关：true=不发真实短信，验证码固定/打日志
+    mock: true
+    # 模拟模式下的固定验证码
+    mock-code: "8888"
