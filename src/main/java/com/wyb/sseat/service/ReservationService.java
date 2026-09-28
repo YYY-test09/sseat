@@ -28,7 +28,8 @@ import java.util.stream.Collectors;
  * 预约核心业务（时段为用户自选的整点区间 startHour~endHour，如 9~12 表示 09:00-12:00）：
  * - 时段余量：查该日该室全部有效预约，内存逐小时统计"覆盖了该小时的预约数"（不写复杂 SQL）
  * - 冲突校验：①所选区间内每一小时都不能超过容量 ②同一座位与已有预约时间段不能重叠
- *   ③数据库唯一索引(室,日期,起始整点,座位)兜底并发重复提交
+ *   ③同一用户与自己的已有预约时间不能重叠（一人同时段只能有一个座位）
+ *   ④数据库唯一索引(室,日期,起始整点,座位)兜底并发重复提交
  * - 取消：状态置 3 且 seatNo 置 null 释放座位（唯一索引允许多 NULL）
  */
 @Service
@@ -103,6 +104,14 @@ public class ReservationService {
         }
         if (req.getSeatNo() > room.getSeatCount()) {
             throw new BizException("座位号超出该自习室座位总数（共" + room.getSeatCount() + "座）");
+        }
+        // 同一人限制：本人在该日期已有时间重叠的预约（不限自习室）则拒绝——一个人同一时间只能坐一个位子
+        List<Reservation> mine = reservationMapper.selectList(new LambdaQueryWrapper<Reservation>()
+                .eq(Reservation::getUserId, userId)
+                .eq(Reservation::getReserveDate, req.getReserveDate())
+                .in(Reservation::getStatus, 0, 1));
+        if (mine.stream().anyMatch(r -> overlaps(r, start, end))) {
+            throw new BizException("您在该时段已有预约，同一时间只能保留一个座位（可先取消原预约）");
         }
         List<Reservation> used = dayReservations(req.getRoomId(), req.getReserveDate());
         // 容量校验：所选区间内每个整点的占用数都不能达到容量
