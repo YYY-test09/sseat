@@ -16,6 +16,16 @@ spring:
     url: jdbc:mysql://localhost:3306/sseat_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowMultiQueries=true
     username: root
     password: ${MYSQL_PASSWORD:}
+  # ---------- Redis（登录安全计数 / 图形验证码答案存储） ----------
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      # 开发默认无密码；连接超时
+      timeout: 3s
+      lettuce:
+        pool:
+          max-active: 8
   # ---------- 文件上传大小限制 ----------
   servlet:
     multipart:

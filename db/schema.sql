@@ -26,13 +26,13 @@ CREATE TABLE `role` (
 
 -- ------------------------------------------------------------
 -- 2. 用户表
---    password 存 SHA-256 十六进制；role_code 关联 role 表
+--    password 存 BCrypt 哈希（$2a$10$ 开头 60 位，自带随机盐）；role_code 关联 role 表
 --    phone 唯一：短信登录时靠手机号定位用户
 -- ------------------------------------------------------------
 CREATE TABLE `user` (
   id        BIGINT PRIMARY KEY AUTO_INCREMENT,
   username  VARCHAR(50)  NOT NULL COMMENT '账号',
-  password  VARCHAR(64)  NOT NULL COMMENT 'SHA-256加密后的密码',
+  password  VARCHAR(64)  NOT NULL COMMENT 'BCrypt加密后的密码',
   nickname  VARCHAR(50)  DEFAULT '' COMMENT '昵称',
   avatar    VARCHAR(255) DEFAULT '' COMMENT '头像URL',
   gender    TINYINT      NOT NULL DEFAULT 0 COMMENT '0未知 1男 2女',
@@ -190,9 +190,9 @@ CREATE TABLE like_record (
 
 -- ============================================================
 -- 种子数据（保证第0步就能登录看到内容）
--- 密码为 SHA-256 十六进制：
---   admin123 -> 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
---   123456   -> 8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92
+-- 密码为 BCrypt 哈希（明文 admin123 / 123456，matches() 校验）：
+--   admin123 -> $2a$10$rxGcN/fR0K/lECwZbst/heLi7qYvit3IiOovaIkRRdXFCkq0Adt/S
+--   123456   -> $2a$10$bP0UfPVhbeZWU2fXt9B1tOkDN2ckvJN85SB7I7qLpWX8mFi78AQ3u
 -- ============================================================
 
 INSERT INTO `role` (role_name, role_code, menus, status, remark) VALUES
@@ -200,9 +200,9 @@ INSERT INTO `role` (role_name, role_code, menus, status, remark) VALUES
 ('普通用户',   'user',  '', 1, '前台用户角色');
 
 INSERT INTO `user` (username, password, nickname, phone, email, role_code, gender) VALUES
-('admin',  '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '系统管理员', '13800000000', 'admin@sseat.com', 'admin', 1),
-('student','8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',  '测试同学',   '13900000001', 'stu@sseat.com', 'user',  2),
-('lihua',  '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',  '李华',       '13900000002', '', 'user', 1);
+('admin',  '$2a$10$rxGcN/fR0K/lECwZbst/heLi7qYvit3IiOovaIkRRdXFCkq0Adt/S', '系统管理员', '13800000000', 'admin@sseat.com', 'admin', 1),
+('student','$2a$10$bP0UfPVhbeZWU2fXt9B1tOkDN2ckvJN85SB7I7qLpWX8mFi78AQ3u',  '测试同学',   '13900000001', 'stu@sseat.com', 'user',  2),
+('lihua',  '$2a$10$bP0UfPVhbeZWU2fXt9B1tOkDN2ckvJN85SB7I7qLpWX8mFi78AQ3u',  '李华',       '13900000002', '', 'user', 1);
 
 INSERT INTO study_room (name, type, description, price, discount, seat_count, max_capacity, facilities, open_start, open_end) VALUES
 ('一号自习室（教学楼A101）', '普通自习室', '安静整洁，适合自习备考，共40座。', 2.00, 0.90, 40, 40, '空调,电源,WiFi', 8, 21),

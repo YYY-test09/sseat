@@ -1,6 +1,8 @@
 package com.wyb.sseat.service;
 
 import com.wyb.sseat.common.BizException;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.imageio.ImageIO;
@@ -8,25 +10,25 @@ import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.time.Duration;
 import java.util.Base64;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 图形验证码：用 Java 自带画图功能生成 4 位字符图片。
- * 答案存在服务器内存里（Map），5 分钟过期、一次性使用。
- * 之所以不用 Redis：本项目单机部署，内存存储足够，也少装一个中间件。
+ * 答案存 Redis：key=captcha:{编号}，SETEX 5 分钟自动过期；
+ * 校验后立即 DELETE（一次性），Redis 的 TTL 天然替代了内存方案的"手动清过期+重启丢失"问题。
  */
 @Component
+@RequiredArgsConstructor
 public class CaptchaService {
 
     /** 去掉了 0/O/1/I 这类容易看错的字符 */
     private static final String CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static final long EXPIRE_MS = 5 * 60 * 1000;
+    private static final Duration EXPIRE = Duration.ofMinutes(5);
+    private static final String KEY_PREFIX = "captcha:";
 
-    /** key=验证码编号, value=[答案, 过期时间戳] */
-    private final Map<String, Object[]> store = new ConcurrentHashMap<>();
+    private final StringRedisTemplate redis;
 
     public record CaptchaImage(String captchaKey, String imgBase64, String devCode) {}
 
@@ -58,8 +60,7 @@ public class CaptchaService {
         g.dispose();
 
         String key = UUID.randomUUID().toString().replace("-", "");
-        store.put(key, new Object[]{code.toString(), System.currentTimeMillis() + EXPIRE_MS});
-        cleanExpired();
+        redis.opsForValue().set(KEY_PREFIX + key, code.toString(), EXPIRE);
 
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             ImageIO.write(img, "png", out);
@@ -72,11 +73,12 @@ public class CaptchaService {
 
     /** 校验验证码：忽略大小写；无论对错都立即删除（防止暴力重试同一个码） */
     public void verify(String captchaKey, String input) {
-        Object[] entry = store.remove(captchaKey);
-        if (entry == null || (long) entry[1] < System.currentTimeMillis()) {
+        String answer = redis.opsForValue().get(KEY_PREFIX + captchaKey);
+        redis.delete(KEY_PREFIX + captchaKey);
+        if (answer == null) {
             throw new BizException("验证码已过期，请点击图片刷新");
         }
-        if (!((String) entry[0]).equalsIgnoreCase(input == null ? "" : input.trim())) {
+        if (!answer.equalsIgnoreCase(input == null ? "" : input.trim())) {
             throw new BizException("验证码错误");
         }
     }
@@ -86,11 +88,5 @@ public class CaptchaService {
         int g = min + (int) (Math.random() * (max - min));
         int b = min + (int) (Math.random() * (max - min));
         return new Color(r, g, b);
-    }
-
-    /** 顺手清掉过期条目，防止 Map 无限增长 */
-    private void cleanExpired() {
-        long now = System.currentTimeMillis();
-        store.entrySet().removeIf(e -> (long) e.getValue()[1] < now);
     }
 }

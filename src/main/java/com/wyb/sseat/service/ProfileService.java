@@ -2,13 +2,13 @@ package com.wyb.sseat.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wyb.sseat.common.BizException;
-import com.wyb.sseat.common.Sha256Util;
 import com.wyb.sseat.dto.AuthDto;
 import com.wyb.sseat.entity.Role;
 import com.wyb.sseat.entity.User;
 import com.wyb.sseat.mapper.RoleMapper;
 import com.wyb.sseat.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 /** 个人中心：修改资料、修改密码 */
@@ -18,6 +18,7 @@ public class ProfileService {
 
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
+    private final PasswordEncoder passwordEncoder;
 
     /** 更新当前用户的资料字段（只更新非空字段） */
     public void updateProfile(Long userId, User updating) {
@@ -41,12 +42,12 @@ public class ProfileService {
     /** 修改密码：需验证旧密码（需求明确） */
     public void changePassword(Long userId, AuthDto.ChangePasswordReq req) {
         User user = userMapper.selectById(userId);
-        if (!Sha256Util.matches(req.getOldPassword(), user.getPassword())) {
+        if (!passwordEncoder.matches(req.getOldPassword(), user.getPassword())) {
             throw new BizException("旧密码不正确");
         }
         User update = new User();
         update.setId(userId);
-        update.setPassword(Sha256Util.hash(req.getNewPassword()));
+        update.setPassword(passwordEncoder.encode(req.getNewPassword()));
         userMapper.updateById(update);
     }
 }

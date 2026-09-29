@@ -3,7 +3,10 @@ package com.wyb.sseat.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wyb.sseat.common.BizException;
+import com.wyb.sseat.common.RedisLock;
 import com.wyb.sseat.dto.ReservationDto;
 import com.wyb.sseat.entity.Reservation;
 import com.wyb.sseat.entity.StudyRoom;
@@ -13,9 +16,12 @@ import com.wyb.sseat.mapper.StudyRoomMapper;
 import com.wyb.sseat.mapper.UserMapper;
 import com.wyb.sseat.vo.ReservationVO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -26,12 +32,16 @@ import java.util.stream.Collectors;
 
 /**
  * 预约核心业务（时段为用户自选的整点区间 startHour~endHour，如 9~12 表示 09:00-12:00）：
- * - 时段余量：查该日该室全部有效预约，内存逐小时统计"覆盖了该小时的预约数"（不写复杂 SQL）
+ * - 时段余量：查该日该室全部有效预约，内存逐小时统计"覆盖了该小时的预约数"（不写复杂 SQL）；
+ *   读路径（余量参考/占用座位）走 Redis 缓存（当日占用数据，TTL 30s + 写操作版本号失效），
+ *   写路径（book 临界区）强制实时查库
  * - 冲突校验：①所选区间内每一小时都不能超过容量 ②同一座位与已有预约时间段不能重叠
  *   ③同一用户与自己的已有预约时间不能重叠（一人同时段只能有一个座位）
- *   ④数据库唯一索引(室,日期,起始整点,座位)兜底并发重复提交
+ *   ④并发防线：Redis 分布式锁(室+日期粒度)串行化"校验+插入"临界区，
+ *   数据库唯一索引(室,日期,起始整点,座位)最后兜底
  * - 取消：状态置 3 且 seatNo 置 null 释放座位（唯一索引允许多 NULL）
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReservationService {
@@ -40,16 +50,23 @@ public class ReservationService {
     private static final int MAX_ADVANCE_DAYS = 7;
     /** 时段开始后允许签到的分钟数，超时视为违约（座位自动释放） */
     public static final int CHECK_IN_GRACE_MINUTES = 15;
+    /** 当日占用数据的缓存版本号 key（任何预约写操作 INCR 它=全部日缓存作废） */
+    private static final String RES_VER = "cache:res:ver";
+    /** 日占用缓存 TTL：余量本就是"参考值"，短陈旧由预约接口的实时校验兜底正确性 */
+    private static final Duration DAY_CACHE_TTL = Duration.ofSeconds(30);
 
     private final ReservationMapper reservationMapper;
     private final StudyRoomMapper roomMapper;
     private final UserMapper userMapper;
+    private final StringRedisTemplate redis;
+    private final ObjectMapper objectMapper;
+    private final RedisLock redisLock;
 
     /** 某日各整点参考余量：[{hour, label, remaining, capacity, past, bookedByMe}] */
     public List<Map<String, Object>> slotAvailability(Long roomId, LocalDate date, Long userId) {
         StudyRoom room = mustRoom(roomId);
         if (room.getStatus() != 1) throw new BizException("该自习室已停用，暂不可预约");
-        List<Reservation> used = dayReservations(roomId, date);
+        List<Reservation> used = dayReservationsCached(roomId, date);
 
         int nowHour = LocalDateTime.now().getHour();
         List<Map<String, Object>> slots = new ArrayList<>();
@@ -74,15 +91,10 @@ public class ReservationService {
     /** start~end 区间内任一小时被占用的座位号（前端座位网格置灰，自己的也算占用避免重复约） */
     public List<Integer> occupiedSeats(Long roomId, LocalDate date, int startHour, int endHour) {
         mustRoom(roomId);
-        // 时间段重叠判定公式：已有.start < 新.end 且 已有.end > 新.start
-        List<Reservation> list = reservationMapper.selectList(new LambdaQueryWrapper<Reservation>()
-                .eq(Reservation::getRoomId, roomId)
-                .eq(Reservation::getReserveDate, date)
-                .in(Reservation::getStatus, 0, 1)
-                .isNotNull(Reservation::getSeatNo)
-                .lt(Reservation::getStartHour, endHour)
-                .gt(Reservation::getEndHour, startHour));
-        return list.stream().map(Reservation::getSeatNo).distinct().sorted().toList();
+        // 与余量共用同一份"当日占用"缓存：内存过滤重叠区间，省一次 SQL
+        return dayReservationsCached(roomId, date).stream()
+                .filter(r -> r.getSeatNo() != null && overlaps(r, startHour, endHour))
+                .map(Reservation::getSeatNo).distinct().sorted().toList();
     }
 
     /** 用户提交预约 */
@@ -105,41 +117,63 @@ public class ReservationService {
         if (req.getSeatNo() > room.getSeatCount()) {
             throw new BizException("座位号超出该自习室座位总数（共" + room.getSeatCount() + "座）");
         }
-        // 同一人限制：本人在该日期已有时间重叠的预约（不限自习室）则拒绝——一个人同一时间只能坐一个位子
-        List<Reservation> mine = reservationMapper.selectList(new LambdaQueryWrapper<Reservation>()
-                .eq(Reservation::getUserId, userId)
-                .eq(Reservation::getReserveDate, req.getReserveDate())
-                .in(Reservation::getStatus, 0, 1));
-        if (mine.stream().anyMatch(r -> overlaps(r, start, end))) {
-            throw new BizException("您在该时段已有预约，同一时间只能保留一个座位（可先取消原预约）");
-        }
-        List<Reservation> used = dayReservations(req.getRoomId(), req.getReserveDate());
-        // 容量校验：所选区间内每个整点的占用数都不能达到容量
-        for (int h = start; h < end; h++) {
-            final int hour = h;
-            long booked = used.stream().filter(r -> coversHour(r, hour)).count();
-            if (booked >= room.getMaxCapacity()) {
-                throw new BizException(String.format("%02d:00-%02d:00 时段已约满，请调整起止时间", hour, hour + 1));
-            }
-        }
-        // 座位冲突校验：该座位已有预约与所选区间重叠则拒绝
-        boolean seatConflict = used.stream().anyMatch(r -> r.getSeatNo() != null
-                && r.getSeatNo().equals(req.getSeatNo()) && overlaps(r, start, end));
-        if (seatConflict) throw new BizException("该座位在所选时段内已被预约，请换一个座位或调整时段");
-
-        Reservation r = new Reservation();
-        r.setUserId(userId);
-        r.setRoomId(req.getRoomId());
-        r.setReserveDate(req.getReserveDate());
-        r.setStartHour(start);
-        r.setEndHour(end);
-        r.setSeatNo(req.getSeatNo());
-        r.setStatus(0); // 待确认
+        // 并发防线：自习室+日期粒度的 Redis 分布式锁，把"读占用→校验→写库"整段串行化，
+        // 关闭容量/座位校验与插入之间的竞态窗口（10 秒 TTL 防持锁进程宕机死锁）
+        String lockKey = "lock:book:" + req.getRoomId() + ":" + req.getReserveDate();
+        String lockToken = null;
+        boolean lockSkipped = false;
         try {
-            reservationMapper.insert(r);
-        } catch (DuplicateKeyException e) {
-            // 并发下同座位同时段都通过了预检时，唯一索引是最后防线
-            throw new BizException("该座位刚刚已被预约，请换一个座位");
+            lockToken = redisLock.tryLock(lockKey, Duration.ofSeconds(10));
+        } catch (Exception e) {
+            lockSkipped = true; // Redis 故障降级：没有锁仍有"一人一位+座位冲突校验+唯一索引"三道防线
+            log.warn("Redis 不可用，预约分布式锁降级: {}", e.getMessage());
+        }
+        if (lockToken == null && !lockSkipped) {
+            throw new BizException("同时预约该自习室的人较多，请稍后再试");
+        }
+        try {
+            // 同一人限制：本人在该日期已有时间重叠的预约（不限自习室）则拒绝——一个人同一时间只能坐一个位子
+            List<Reservation> mine = reservationMapper.selectList(new LambdaQueryWrapper<Reservation>()
+                    .eq(Reservation::getUserId, userId)
+                    .eq(Reservation::getReserveDate, req.getReserveDate())
+                    .in(Reservation::getStatus, 0, 1));
+            if (mine.stream().anyMatch(r -> overlaps(r, start, end))) {
+                throw new BizException("您在该时段已有预约，同一时间只能保留一个座位（可先取消原预约）");
+            }
+            // 临界区内必须查实时库——不能走可能陈旧 30s 的缓存
+            List<Reservation> used = dayReservations(req.getRoomId(), req.getReserveDate());
+            // 容量校验：所选区间内每个整点的占用数都不能达到容量
+            for (int h = start; h < end; h++) {
+                final int hour = h;
+                long booked = used.stream().filter(r -> coversHour(r, hour)).count();
+                if (booked >= room.getMaxCapacity()) {
+                    throw new BizException(String.format("%02d:00-%02d:00 时段已约满，请调整起止时间", hour, hour + 1));
+                }
+            }
+            // 座位冲突校验：该座位已有预约与所选区间重叠则拒绝
+            boolean seatConflict = used.stream().anyMatch(r -> r.getSeatNo() != null
+                    && r.getSeatNo().equals(req.getSeatNo()) && overlaps(r, start, end));
+            if (seatConflict) throw new BizException("该座位在所选时段内已被预约，请换一个座位或调整时段");
+
+            Reservation r = new Reservation();
+            r.setUserId(userId);
+            r.setRoomId(req.getRoomId());
+            r.setReserveDate(req.getReserveDate());
+            r.setStartHour(start);
+            r.setEndHour(end);
+            r.setSeatNo(req.getSeatNo());
+            r.setStatus(0); // 待确认
+            try {
+                reservationMapper.insert(r);
+            } catch (DuplicateKeyException e) {
+                // 锁降级期间或跨实例极端情况，同座位同时段唯一索引是最后防线
+                throw new BizException("该座位刚刚已被预约，请换一个座位");
+            }
+            bumpResVersion(); // 占用变了：当日余量/占用座位缓存整体作废
+        } finally {
+            if (lockToken != null) {
+                redisLock.unlock(lockKey, lockToken);
+            }
         }
     }
 
@@ -155,6 +189,7 @@ public class ReservationService {
                 .eq(Reservation::getId, id)
                 .set(Reservation::getStatus, 3)
                 .set(Reservation::getSeatNo, null));
+        bumpResVersion();
     }
 
     /** 用户签到：时段开始后 15 分钟内有效；签到后即使过期也只置"已完成"不置违约 */
@@ -244,6 +279,7 @@ public class ReservationService {
         } catch (DuplicateKeyException e) {
             throw new BizException("该时段该座位已被其他预约占用");
         }
+        bumpResVersion();
     }
 
     /** 管理端修改状态（确认/完成/取消） */
@@ -262,10 +298,12 @@ public class ReservationService {
             update.setStatus(status);
             reservationMapper.updateById(update);
         }
+        bumpResVersion();
     }
 
     public void adminDelete(Long id) {
         reservationMapper.deleteById(id);
+        bumpResVersion();
     }
 
     /**
@@ -298,7 +336,44 @@ public class ReservationService {
                 count++;
             }
         }
+        if (count > 0) bumpResVersion(); // 违约释放改变了占用，缓存整体作废
         return count;
+    }
+
+    // ---------- 缓存辅助 ----------
+
+    /** 当日占用数据（status 0/1）读缓存版本：slotAvailability / occupiedSeats 共用 */
+    private List<Reservation> dayReservationsCached(Long roomId, LocalDate date) {
+        String key = null;
+        try {
+            String ver = redis.opsForValue().get(RES_VER);
+            key = "cache:res:v" + (ver == null ? "0" : ver) + ":day:" + roomId + ":" + date;
+            String json = redis.opsForValue().get(key);
+            if (json != null) {
+                return objectMapper.readValue(json, new TypeReference<List<Reservation>>() {});
+            }
+        } catch (Exception e) {
+            log.warn("预约日缓存读取失败，回源查库: {}", e.getMessage());
+            key = null;
+        }
+        List<Reservation> list = dayReservations(roomId, date);
+        if (key != null) {
+            try {
+                redis.opsForValue().set(key, objectMapper.writeValueAsString(list), DAY_CACHE_TTL);
+            } catch (Exception e) {
+                log.warn("预约日缓存写入失败: {}", e.getMessage());
+            }
+        }
+        return list;
+    }
+
+    /** 预约数据任何变更后 INCR 版本号：所有 "cache:res:v{ver}:day:*" 键整体作废（旧键等 TTL 自然清理） */
+    private void bumpResVersion() {
+        try {
+            redis.opsForValue().increment(RES_VER);
+        } catch (Exception e) {
+            log.warn("预约缓存版本自增失败(最长30s后自动过期回源): {}", e.getMessage());
+        }
     }
 
     // ---------- 私有 ----------

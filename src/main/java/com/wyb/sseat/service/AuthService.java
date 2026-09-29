@@ -3,7 +3,6 @@ package com.wyb.sseat.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wyb.sseat.common.BizException;
 import com.wyb.sseat.common.JwtUtil;
-import com.wyb.sseat.common.Sha256Util;
 import com.wyb.sseat.dto.AuthDto;
 import com.wyb.sseat.entity.Role;
 import com.wyb.sseat.entity.User;
@@ -11,6 +10,7 @@ import com.wyb.sseat.mapper.RoleMapper;
 import com.wyb.sseat.mapper.UserMapper;
 import com.wyb.sseat.vo.UserVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -18,7 +18,7 @@ import java.util.Map;
 
 /**
  * 认证业务：注册、登录、短信登录、找回密码。
- * 密码一律 SHA-256 加密存库；登录成功签发 JWT 令牌。
+ * 密码一律 BCrypt 加密存库（自带随机盐的慢哈希，见 SecurityConfig#passwordEncoder）；登录成功签发 JWT 令牌。
  */
 @Service
 @RequiredArgsConstructor
@@ -30,6 +30,7 @@ public class AuthService {
     private final CaptchaService captchaService;
     private final SmsService smsService;
     private final LoginSecurityService loginSecurity;
+    private final PasswordEncoder passwordEncoder;
 
     /** 登录返回体：{ token, user } */
     private Map<String, Object> issueToken(User user) {
@@ -52,7 +53,7 @@ public class AuthService {
         captchaService.verify(req.getCaptchaKey(), req.getCaptchaCode());
         User user = userMapper.selectOne(
                 new LambdaQueryWrapper<User>().eq(User::getUsername, req.getUsername()));
-        if (user == null || !Sha256Util.matches(req.getPassword(), user.getPassword())) {
+        if (user == null || !passwordEncoder.matches(req.getPassword(), user.getPassword())) {
             String hint = loginSecurity.recordFailure(req.getUsername());
             throw new BizException("账号或密码错误" + hint);
         }
@@ -97,7 +98,7 @@ public class AuthService {
         }
         User update = new User();
         update.setId(user.getId());
-        update.setPassword(Sha256Util.hash(req.getNewPassword()));
+        update.setPassword(passwordEncoder.encode(req.getNewPassword()));
         userMapper.updateById(update);
     }
 
@@ -125,7 +126,7 @@ public class AuthService {
     private void insertUser(String username, String password, String nickname, String phone) {
         User user = new User();
         user.setUsername(username);
-        user.setPassword(Sha256Util.hash(password));
+        user.setPassword(passwordEncoder.encode(password));
         user.setNickname(nickname);
         user.setPhone(phone);
         user.setGender(0);

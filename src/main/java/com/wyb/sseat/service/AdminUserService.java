@@ -3,12 +3,12 @@ package com.wyb.sseat.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wyb.sseat.common.BizException;
-import com.wyb.sseat.common.Sha256Util;
 import com.wyb.sseat.dto.UserDto;
 import com.wyb.sseat.entity.*;
 import com.wyb.sseat.mapper.*;
 import com.wyb.sseat.vo.UserVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +33,7 @@ public class AdminUserService {
     private final FeedbackMapper feedbackMapper;
     private final FavoriteMapper favoriteMapper;
     private final LikeRecordMapper likeRecordMapper;
+    private final PasswordEncoder passwordEncoder;
 
     /** 分页查询用户列表，支持按账号/昵称关键字、角色、状态筛选 */
     public Page<UserVO> page(long pageNo, long size, String keyword, String roleCode, Integer status) {
@@ -63,7 +64,7 @@ public class AdminUserService {
         checkPhoneAvailable(req.getPhone(), null);
         User user = new User();
         user.setUsername(req.getUsername());
-        user.setPassword(Sha256Util.hash(req.getPassword()));
+        user.setPassword(passwordEncoder.encode(req.getPassword()));
         user.setNickname(req.getNickname() == null || req.getNickname().isBlank() ? req.getUsername() : req.getNickname());
         user.setPhone(emptyToNull(req.getPhone()));
         user.setEmail(req.getEmail());
@@ -114,7 +115,7 @@ public class AdminUserService {
         mustExist(id);
         User u = new User();
         u.setId(id);
-        u.setPassword(Sha256Util.hash("123456"));
+        u.setPassword(passwordEncoder.encode("123456"));
         userMapper.updateById(u);
     }
 
