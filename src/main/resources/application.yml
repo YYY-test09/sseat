@@ -7,6 +7,10 @@ server:
 spring:
   application:
     name: sseat
+  # 激活本机个人配置（application-local.yml 不入库，见 .gitignore；
+  # 新克隆本工程的人：复制 application-local.example.yml 为 application-local.yml 填入自己的密码即可运行）
+  profiles:
+    active: local
   # ---------- 数据库连接 ----------
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -51,8 +55,9 @@ mybatis-plus:
 # ---------- 自定义配置（对应代码里的 @Value） ----------
 sseat:
   jwt:
-    # JWT 签名密钥（HS256 要求至少32字符）——已换为随机长串，换密钥后旧令牌全部失效属正常现象
-    secret: "OLD_JWT_SECRET_SCRUBBED"
+    # JWT 签名密钥（HS512 要求至少64字符）。真实密钥放 application-local.yml（不入库）；
+    # 这里的占位串仅供克隆者未配置 local 文件时不至于启动崩溃（签出的令牌自然无效）
+    secret: ${JWT_SECRET:CHANGE_ME-create-application-local-yml-or-set-env-JWT_SECRET-with-64-plus-random-chars}
     # 令牌有效期（小时）
     expire-hours: 24
   upload:

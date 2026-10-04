@@ -103,7 +103,8 @@ SimpleSeat/
 │       │   ├── mapper/       MyBatis-Plus BaseMapper
 │       │   ├── service/      业务层（预约/签到/统计/登录安全等 13 个）
 │       │   └── task/         ReservationTask 定时巡检
-│       ├── main/resources/application.yml   端口/数据源/JWT/验证码等
+│       ├── main/resources/application.yml   端口/数据源/JWT/验证码等（真实密码不在此处）
+│       │                 application-local.example.yml  本机个人配置模板（复制为 application-local.yml 使用）
 │       └── test/java/.../task/ReservationTaskTest.java  定时任务单元测试
 └── sseat-ui/                     ── 前端 Vue 项目（用户端 + 管理端同一工程）
     ├── vite.config.js            /api、/uploads 代理到 8080
@@ -148,7 +149,9 @@ export JAVA_HOME="C:\\Users\\30837\\.jdks\\ms-17.0.20.1"
 ./mvnw.cmd spring-boot:run
 ```
 看到 `Started SseatApplication` 即成功，端口 **8080**。
-数据库连接密码在 `src/main/resources/application.yml`（本机已配好；开源/答辩演示前记得改占位符）。
+**首次克隆后需配置**：复制 `src/main/resources/application-local.example.yml` 为同目录
+`application-local.yml`，填入你本机的 MySQL root 密码与 JWT 密钥（该文件被 .gitignore 排除，不会入库；
+也可改用环境变量 `MYSQL_PASSWORD` / `JWT_SECRET`）。
 
 ### 4. 启动前端
 
@@ -220,7 +223,7 @@ cd ../sseat-ui && npm run build   # 前端生产构建通过性检查
 
 - [ ] **先启动 Redis 再启动后端**（演示中途 Redis 窗口被关会导致验证码接口不可用）
 - [ ] `application.yml` 里 `sseat.captcha.debug-reveal` 改为 `false`（关闭验证码答案回显）
-- [ ] `application.yml` 数据库密码改为占位符或演示环境专用口令
+- [ ] 确认真实密码/JWT 密钥只存在于 `application-local.yml`：`git status` 看不到它、`git log -S"密码"` 无命中
 - [ ] `mybatis-plus.configuration.log-impl` 两行注释掉（不再刷屏 SQL 日志）
 - [ ] 演示环境：后端 8080 + 前端 `npm run dev`；或 `npm run build` 打包版
 - [ ] 打开 `http://localhost:8080/doc.html` 确认接口文档可展示（论文截图用）

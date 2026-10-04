@@ -1,0 +1,10 @@
+# 复制此文件为 application-local.yml（同目录），填入你本机的值即可运行
+# （application-local.yml 已被 .gitignore 排除，不会提交）
+spring:
+  datasource:
+    password: "你的MySQL root密码"
+
+sseat:
+  jwt:
+    # 至少 64 个字符的随机串，用于 HS512 签名；换值后旧登录令牌全部失效属正常现象
+    secret: "换成你自己的64位以上随机串"

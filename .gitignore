@@ -32,3 +32,6 @@ build/
 ### VS Code ###
 .vscode/
 .claude-code-gui/
+
+### 本机个人配置（数据库真实密码/JWT密钥，绝不入库） ###
+/src/main/resources/application-local.yml
