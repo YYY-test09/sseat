@@ -320,12 +320,14 @@ public class ReservationService {
             LocalDateTime start = r.getReserveDate().atTime(r.getStartHour(), 0);
             if (r.getCheckInTime() == null) {
                 // 未签到且已过签到窗口 → 违约取消、释放座位
+                // isNull 前置条件：与用户"踩点签到"竞争时由数据库最终裁决，巡检只动确实没签到的行
                 if (now.isAfter(start.plusMinutes(CHECK_IN_GRACE_MINUTES))) {
-                    reservationMapper.update(null, new LambdaUpdateWrapper<Reservation>()
+                    int affected = reservationMapper.update(null, new LambdaUpdateWrapper<Reservation>()
                             .eq(Reservation::getId, r.getId())
+                            .isNull(Reservation::getCheckInTime)
                             .set(Reservation::getStatus, 3)
                             .set(Reservation::getSeatNo, null));
-                    count++;
+                    count += affected; // 以真实更新行数计数：恰好踩线签到的行更新 0 次，不误报
                 }
             } else if (hasEndedAt(r, now)) {
                 // 已签到且时段结束 → 已完成
