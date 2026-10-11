@@ -29,7 +29,9 @@ spring:
       timeout: 3s
       lettuce:
         pool:
-          max-active: 8
+          # 连接池生效需 classpath 有 commons-pool2（见 pom 注释）；不配则用默认共享单连接多路复用
+          max-active: 8      # 最多同时 8 条连接
+          max-wait: 2s       # 池耗尽时最多等 2 秒，宁可报错也不无限阻塞
   # ---------- 文件上传大小限制 ----------
   servlet:
     multipart:

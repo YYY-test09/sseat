@@ -42,6 +42,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
+        <!-- Lettuce 连接池支持（commons-pool2）：没有它，yml 里 lettuce.pool.* 配置会静默失效 -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+        </dependency>
 
         <!-- MyBatis-Plus：操作数据库的框架（单表 CRUD 免写 SQL） -->
         <dependency>
